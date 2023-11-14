@@ -1,0 +1,93 @@
+version: "3"
+services:
+  redis:
+    image: "redis:4.0-alpine"
+    command: redis-server --appendonly yes --requirepass devpassword
+    volumes:
+      - "./redis:/var/lib/redis/data"
+    ports:
+      - "6379:6379"
+    networks:
+      - "backend"
+    
+  rabbitmq:
+    image: rabbitmq:3.8
+    container_name: rabbitmq
+    env_file: .env
+    environment:
+        RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+        RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+        RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST}
+    ports:
+        - "${RABBITMQ_PORT}:${RABBITMQ_PORT}"
+        - "${RABBITMQ_PORT_2}:${RABBITMQ_PORT_2}"
+  
+  # flower:
+  #   image: mher/flower
+  #   environment: 
+  #     - CELERY_BROKER_URL=amqp://guane:ilovefuelai@rabbitmq:5672/fuelai
+  #     - FLOWER_PORT=5555
+  #     - FLOWER_BASIC_AUTH=username:password
+  #   ports: 
+  #     - 5555:5555
+  #   depends_on: 
+  #     - rabbitmq
+  # app:
+  #   image: frontend
+  #   build: ./frontend
+  #   container_name: frontend
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - "8080:8080"
+  web:
+    build:
+      context: ./backend
+      args:
+        - ENVIRONMENT=${ENVIRONMENT}
+    volumes:
+      - ./backend:/app
+      - ./backend/app/logs:/app/logs
+    image: pythonweb     
+    container_name: smarti
+    ports:
+      - "${PORT}:8000"
+    depends_on:
+      - db
+    env_file:
+      - .env
+    networks:
+      - "backend"    
+  db:
+    image: postgres:12-alpine
+    container_name: smartidb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    env_file:
+      - .env 
+    networks:
+      - "backend"    
+  worker:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    command: celery worker -A app.tasks --loglevel=DEBUG -c 1
+    env_file:
+      - ".env"
+    volumes:
+      - "./backend:/app"
+    networks:
+      - "backend"
+volumes:
+  postgres_data:
+  elasticsearch_data:
+    driver: local
+  metricbeat-data01:
+    driver: local
+
+networks:
+  backend:
+    name: "backend"
+    driver: "bridge"    
